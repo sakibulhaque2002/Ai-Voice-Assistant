@@ -1,0 +1,112 @@
+{
+  "questionnaireId": "sample-001",
+  "title": "Country and Vehicle Survey",
+  "startQuestionId": 1,
+  "questions": [
+    {
+      "id": 1,
+      "question": "Where are you from?",
+      "field": "country",
+      "type": "single_select",
+      "options": [
+        {
+          "label": "Bangladesh",
+          "value": "Bangladesh",
+          "nextQuestionId": 2
+        },
+        {
+          "label": "India",
+          "value": "India",
+          "nextQuestionId": 2
+        },
+        {
+          "label": "Pakistan",
+          "value": "Pakistan",
+          "nextQuestionId": 2
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "question": "What is your age group?",
+      "field": "ageGroup",
+      "type": "single_select",
+      "options": [
+        {
+          "label": "21-30",
+          "value": "21-30",
+          "nextQuestionId": 3
+        },
+        {
+          "label": "31-40",
+          "value": "31-40",
+          "nextQuestionId": 3
+        },
+        {
+          "label": "41-50",
+          "value": "41-50",
+          "nextQuestionId": 3
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "question": "Do you currently own a car?",
+      "field": "ownsCar",
+      "type": "single_select",
+      "options": [
+        {
+          "label": "Yes",
+          "value": true,
+          "nextQuestionId": 4
+        },
+        {
+          "label": "No",
+          "value": false,
+          "nextQuestionId": 5
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "question": "Which brand is your car?",
+      "field": "carBrand",
+      "type": "single_select",
+      "options": [
+        {
+          "label": "Toyota",
+          "value": "Toyota",
+          "nextQuestionId": null
+        },
+        {
+          "label": "Honda",
+          "value": "Honda",
+          "nextQuestionId": null
+        },
+        {
+          "label": "Hyundai",
+          "value": "Hyundai",
+          "nextQuestionId": null
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "question": "Are you planning to buy a car within the next year?",
+      "field": "buyCarSoon",
+      "type": "single_select",
+      "options": [
+        {
+          "label": "Yes",
+          "value": true,
+          "nextQuestionId": null
+        },
+        {
+          "label": "No",
+          "value": false,
+          "nextQuestionId": null
+        }
+      ]
+    }
+  ]
+}
