@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.example.voice_assistant.VoiceAssistantApplicationTests" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-08T12:14:01.239Z" hostname="HOSE2406102433A" time="1.949">
+<testsuite name="com.example.voice_assistant.VoiceAssistantApplicationTests" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-09T08:25:14.872Z" hostname="HOSE2406102433A" time="5.405">
   <properties/>
-  <testcase name="contextLoads()" classname="com.example.voice_assistant.VoiceAssistantApplicationTests" time="0.418"/>
-  <system-out><![CDATA[18:14:01.329 [Test worker] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.example.voice_assistant.VoiceAssistantApplicationTests]: VoiceAssistantApplicationTests does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
-18:14:01.407 [Test worker] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.example.voice_assistant.VoiceAssistantApplication for test class com.example.voice_assistant.VoiceAssistantApplicationTests
-18:14:01.463 [Test worker] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.example.voice_assistant.VoiceAssistantApplicationTests]: VoiceAssistantApplicationTests does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
-18:14:01.464 [Test worker] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.example.voice_assistant.VoiceAssistantApplication for test class com.example.voice_assistant.VoiceAssistantApplicationTests
+  <testcase name="contextLoads()" classname="com.example.voice_assistant.VoiceAssistantApplicationTests" time="0.883"/>
+  <system-out><![CDATA[14:25:15.098 [Test worker] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.example.voice_assistant.VoiceAssistantApplicationTests]: VoiceAssistantApplicationTests does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+14:25:15.306 [Test worker] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.example.voice_assistant.VoiceAssistantApplication for test class com.example.voice_assistant.VoiceAssistantApplicationTests
+14:25:15.476 [Test worker] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.example.voice_assistant.VoiceAssistantApplicationTests]: VoiceAssistantApplicationTests does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+14:25:15.479 [Test worker] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.example.voice_assistant.VoiceAssistantApplication for test class com.example.voice_assistant.VoiceAssistantApplicationTests
 
   .   ____          _            __ _ _
  /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
@@ -16,10 +16,10 @@
 
  :: Spring Boot ::                (v4.1.0)
 
-2026-07-08T18:14:01.638+06:00  INFO 28601 --- [voice-assistant] [    Test worker] c.e.v.VoiceAssistantApplicationTests     : Starting VoiceAssistantApplicationTests using Java 25 with PID 28601 (started by sakibuihaque in /home/sakibuihaque/Projects/My Spring Boot Projects/SELP/voice-assistant)
-2026-07-08T18:14:01.639+06:00  INFO 28601 --- [voice-assistant] [    Test worker] c.e.v.VoiceAssistantApplicationTests     : No active profile set, falling back to 1 default profile: "default"
-2026-07-08T18:14:02.540+06:00  INFO 28601 --- [voice-assistant] [    Test worker] o.s.b.w.a.WelcomePageHandlerMapping      : Adding welcome page: class path resource [static/index.html]
-2026-07-08T18:14:02.762+06:00  INFO 28601 --- [voice-assistant] [    Test worker] c.e.v.VoiceAssistantApplicationTests     : Started VoiceAssistantApplicationTests in 1.264 seconds (process running for 1.972)
+2026-07-09T14:25:16.023+06:00  INFO 11827 --- [voice-assistant] [    Test worker] c.e.v.VoiceAssistantApplicationTests     : Starting VoiceAssistantApplicationTests using Java 25 with PID 11827 (started by sakibuihaque in /home/sakibuihaque/Projects/My Spring Boot Projects/SELP/voice-assistant)
+2026-07-09T14:25:16.026+06:00  INFO 11827 --- [voice-assistant] [    Test worker] c.e.v.VoiceAssistantApplicationTests     : No active profile set, falling back to 1 default profile: "default"
+2026-07-09T14:25:18.727+06:00  INFO 11827 --- [voice-assistant] [    Test worker] o.s.b.w.a.WelcomePageHandlerMapping      : Adding welcome page: class path resource [static/index.html]
+2026-07-09T14:25:19.362+06:00  INFO 11827 --- [voice-assistant] [    Test worker] c.e.v.VoiceAssistantApplicationTests     : Started VoiceAssistantApplicationTests in 3.795 seconds (process running for 5.838)
 ]]></system-out>
   <system-err><![CDATA[Mockito is currently self-attaching to enable the inline-mock-maker. This will no longer work in future releases of the JDK. Please add Mockito as an agent to your build as described in Mockito's documentation: https://javadoc.io/doc/org.mockito/mockito-core/latest/org.mockito/org/mockito/Mockito.html#0.3
 WARNING: A Java agent has been loaded dynamically (/home/sakibuihaque/.gradle/caches/modules-2/files-2.1/net.bytebuddy/byte-buddy-agent/1.18.10/9426d28828bdcdf42666bb7a68c468279ea78f59/byte-buddy-agent-1.18.10.jar)

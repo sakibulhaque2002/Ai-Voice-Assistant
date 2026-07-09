@@ -65,13 +65,6 @@
   .btn-primary { background: var(--accent); color: #ffffff; }
   .btn-primary:hover { background: var(--accent-hover); }
   .btn-primary:disabled { background: #e2e4ea; color: var(--muted); cursor: not-allowed; }
-  .btn-secondary {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text);
-  }
-  .btn-secondary:hover { border-color: var(--accent); }
-  .btn-secondary:disabled { color: var(--muted); cursor: not-allowed; }
   .session-row {
     display: flex;
     align-items: center;
@@ -104,23 +97,20 @@
     border-radius: 999px;
   }
   .mic-row { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 20px 0 10px; }
-  .mic-btn {
+  .mic-indicator {
     width: 96px;
     height: 96px;
     border-radius: 50%;
-    background: var(--accent);
+    background: #e2e4ea;
     color: #fff;
     font-size: 34px;
     display: flex;
     align-items: center;
     justify-content: center;
-    user-select: none;
-    -webkit-user-select: none;
-    touch-action: none;
+    transition: background 0.2s ease, transform 0.2s ease;
   }
-  .mic-btn:hover:not(:disabled) { background: var(--accent-hover); }
-  .mic-btn:disabled { background: #e2e4ea; color: var(--muted); cursor: not-allowed; }
-  .mic-btn.recording { background: var(--err); transform: scale(1.06); }
+  .mic-indicator.speaking { background: var(--accent); }
+  .mic-indicator.listening { background: var(--ok); transform: scale(1.06); }
   .mic-hint { font-size: 12px; color: var(--muted); text-align: center; }
   .banner {
     border-radius: 8px;
@@ -176,20 +166,20 @@
 <div class="app">
   <div class="header">
     <h1>Voice Assistant — Interactive Tester</h1>
-    <p class="subtitle">Same questionnaire engine as ai-questionnaire, but you answer out loud. Each question is shown as text; Gemini transcribes your spoken reply over the /voice WebSocket.</p>
+    <p class="subtitle">Same questionnaire engine as ai-questionnaire, but the whole thing is a spoken conversation: click once to start, then just talk. Gemini speaks each question aloud and transcribes your reply over the /voice WebSocket; an answer it doesn't understand gets a spoken retry instead of a warning.</p>
   </div>
 
   <div class="panel">
     <h2>Session</h2>
     <div class="session-row">
-      <button id="startBtn" class="btn-primary">Start voice session</button>
+      <button id="startBtn" class="btn-primary">Start conversation</button>
       <span id="statusBadge" class="badge badge-idle">Idle</span>
     </div>
 
     <div id="banner"></div>
 
     <div id="questionArea">
-      <div class="empty-state">Click "Start voice session" and allow microphone access to begin.</div>
+      <div class="empty-state">Click "Start conversation" and allow microphone access to begin. From then on, just listen and speak.</div>
     </div>
   </div>
 
@@ -210,6 +200,7 @@
 
 <script>
 const SEND_SAMPLE_RATE = 16000;
+const RECEIVE_SAMPLE_RATE = 24000;
 const FLUSH_SAMPLE_COUNT = 2048;
 
 const state = {
@@ -217,11 +208,12 @@ const state = {
   audioContext: null,
   micStream: null,
   micNode: null,
+  micSource: null,
   listening: false,
-  canClick: false,
   finished: false,
   pendingSamples: [],
   started: false,
+  nextPlayTime: 0,
 };
 
 const el = {
@@ -272,7 +264,9 @@ async function startVoiceSession() {
   try {
     state.audioContext = new AudioContext();
     await state.audioContext.audioWorklet.addModule("/mic-processor.js");
-    state.micStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
+    state.micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+    });
   } catch (err) {
     showBanner("error", "Microphone access failed: " + err.message);
     el.startBtn.disabled = false;
@@ -280,15 +274,29 @@ async function startVoiceSession() {
     return;
   }
 
+  // The mic tap is wired up once and left running for the whole conversation; onMicChunk
+  // decides whether to actually forward audio based on state.listening, which the server
+  // toggles via "speaking"/"listening" messages. There is no per-question button anymore.
+  state.micSource = state.audioContext.createMediaStreamSource(state.micStream);
+  state.micNode = new AudioWorkletNode(state.audioContext, "mic-processor");
+  state.micNode.port.onmessage = (event) => onMicChunk(event.data);
+  state.micSource.connect(state.micNode);
+
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   state.ws = new WebSocket(`${proto}//${location.host}/voice`);
+  state.ws.binaryType = "arraybuffer";
 
   state.ws.addEventListener("open", () => {
     sendControl({ type: "start" });
     setBadge("processing", "Starting…");
+    el.questionArea.innerHTML = `<div class="empty-state">Connecting…</div>`;
   });
 
   state.ws.addEventListener("message", (event) => {
+    if (event.data instanceof ArrayBuffer) {
+      playAudioChunk(event.data);
+      return;
+    }
     handleControlMessage(JSON.parse(event.data));
   });
 
@@ -314,11 +322,15 @@ function handleControlMessage(msg) {
   switch (msg.type) {
     case "question":
       renderQuestion(msg.question);
-      setReady(true);
       break;
-    case "listening_stopped":
-      stopListening();
-      setBadge("processing", "Processing…");
+    case "speaking":
+      setListening(false);
+      state.nextPlayTime = state.audioContext.currentTime;
+      setBadge("speaking", "Speaking…");
+      break;
+    case "listening":
+      setListening(true);
+      setBadge("listening", "Listening…");
       break;
     case "transcript":
       showBanner("ok", `Heard: "${msg.text}"`);
@@ -328,17 +340,16 @@ function handleControlMessage(msg) {
       break;
     case "not_understood":
       showBanner("warn", msg.message);
-      setReady(true);
       break;
     case "completed":
       state.finished = true;
-      setReady(false);
+      setListening(false);
       setBadge("done", "Completed");
       el.questionArea.innerHTML = `<div class="banner banner-ok" style="margin-top:12px;">Questionnaire completed. All answers are shown in the panel on the right.</div>`;
       break;
     case "error":
       state.finished = true;
-      setReady(false);
+      setListening(false);
       showBanner("error", msg.message);
       break;
   }
@@ -352,46 +363,24 @@ function renderQuestion(question) {
     <p class="question-text">${escapeHtml(question.question)}</p>
     <div class="options">${optionsHtml}</div>
     <div class="mic-row">
-      <button id="micBtn" class="mic-btn">&#127908;</button>
-      <div class="mic-hint" id="micHint">Click, then speak your answer</div>
+      <div id="micIndicator" class="mic-indicator">&#127908;</div>
+      <div class="mic-hint" id="micHint">Listen, then just speak your answer</div>
     </div>
   `;
-  document.getElementById("micBtn").addEventListener("click", onMicButtonClick);
 }
 
-function onMicButtonClick() {
-  if (!state.canClick || state.listening || state.finished) return;
-  setReady(false);
-  startListening();
-  sendControl({ type: "listen" });
-}
-
-function setReady(ready) {
-  state.canClick = ready;
-  const micBtn = document.getElementById("micBtn");
-  const micHint = document.getElementById("micHint");
-  if (!micBtn) return;
-  micBtn.disabled = !ready || state.listening;
-  if (micHint && !state.listening) {
-    micHint.textContent = ready ? "Click, then speak your answer" : "Processing…";
-  }
-  if (ready) setBadge("listening", "Ready — click to answer");
-}
-
-function startListening() {
-  if (state.listening) return;
-  state.listening = true;
+function setListening(listening) {
+  state.listening = listening;
   state.pendingSamples = [];
-  document.getElementById("micBtn").classList.add("recording");
-  document.getElementById("micBtn").disabled = true;
-  document.getElementById("micHint").textContent = "Listening… speak your answer now";
-  setBadge("listening", "Listening…");
-
-  const source = state.audioContext.createMediaStreamSource(state.micStream);
-  state.micNode = new AudioWorkletNode(state.audioContext, "mic-processor");
-  state.micNode.port.onmessage = (event) => onMicChunk(event.data);
-  source.connect(state.micNode);
-  state.micSource = source;
+  const micIndicator = document.getElementById("micIndicator");
+  const micHint = document.getElementById("micHint");
+  if (micIndicator) {
+    micIndicator.classList.toggle("listening", listening);
+    micIndicator.classList.toggle("speaking", !listening && !state.finished);
+  }
+  if (micHint) {
+    micHint.textContent = listening ? "Listening… speak your answer now" : "Speaking…";
+  }
 }
 
 function onMicChunk(float32Native) {
@@ -409,26 +398,6 @@ function flushSamples(samples) {
   const pcm16 = floatTo16BitPCM(samples);
   if (state.ws && state.ws.readyState === WebSocket.OPEN) {
     state.ws.send(pcm16.buffer);
-  }
-}
-
-// Stops the mic stream in response to the server's "listening_stopped" message - the
-// browser never decides on its own when to stop, since Gemini's end-of-speech detection
-// (or the server-side timeout) is what determines the answer is finished.
-function stopListening() {
-  if (!state.listening) return;
-  state.listening = false;
-  const micBtn = document.getElementById("micBtn");
-  if (micBtn) micBtn.classList.remove("recording");
-
-  if (state.pendingSamples.length > 0) {
-    flushSamples(state.pendingSamples.splice(0, state.pendingSamples.length));
-  }
-  if (state.micNode) {
-    state.micNode.port.onmessage = null;
-    state.micNode.disconnect();
-    state.micSource.disconnect();
-    state.micNode = null;
   }
 }
 
@@ -456,6 +425,28 @@ function floatTo16BitPCM(samples) {
   return out;
 }
 
+// Plays a chunk of 24kHz mono PCM16 audio spoken by the assistant. Chunks are scheduled back
+// to back against state.nextPlayTime so playback stays gapless within one spoken line even
+// though chunks arrive one WebSocket frame at a time.
+function playAudioChunk(arrayBuffer) {
+  const int16 = new Int16Array(arrayBuffer);
+  const float32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) {
+    const s = int16[i];
+    float32[i] = s < 0 ? s / 0x8000 : s / 0x7fff;
+  }
+
+  const buffer = state.audioContext.createBuffer(1, float32.length, RECEIVE_SAMPLE_RATE);
+  buffer.copyToChannel(float32, 0);
+  const source = state.audioContext.createBufferSource();
+  source.buffer = buffer;
+  source.connect(state.audioContext.destination);
+
+  const startAt = Math.max(state.audioContext.currentTime, state.nextPlayTime);
+  source.start(startAt);
+  state.nextPlayTime = startAt + buffer.duration;
+}
+
 function renderAnswers(answers) {
   const keys = Object.keys(answers || {});
   if (keys.length === 0) {
@@ -468,6 +459,14 @@ function renderAnswers(answers) {
 }
 
 function teardownMic() {
+  state.listening = false;
+  if (state.micNode) {
+    state.micNode.port.onmessage = null;
+    state.micNode.disconnect();
+  }
+  if (state.micSource) {
+    state.micSource.disconnect();
+  }
   if (state.micStream) {
     state.micStream.getTracks().forEach((t) => t.stop());
   }

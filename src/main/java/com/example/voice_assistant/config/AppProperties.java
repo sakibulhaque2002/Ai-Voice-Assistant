@@ -17,7 +17,7 @@ public record AppProperties(Ai ai, Questionnaire questionnaire, Voice voice) {
 	public record Questionnaire(String resource) {
 	}
 
-	public record Voice(String apiKey, String liveModel) {
+	public record Voice(String apiKey, String liveModel, String voiceName) {
 	}
 
 }

@@ -26,13 +26,14 @@ import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Per-connection orchestrator that drives the questionnaire with a spoken answer instead of
- * a typed one. The questionnaire flow itself (branching, exact-match short-circuit, AI
- * classification, confidence threshold) is untouched from the text-based ai-questionnaire
- * app - this class only adds a listening front end: the current question is sent to the
- * browser as text; a single "listen" click starts a continuous mic stream that keeps going
- * until Gemini's own end-of-speech detection (or a timeout) finalizes the turn, at which
- * point the transcript is fed into the same SessionService.submitAnswer used by the text app.
+ * Per-connection orchestrator that drives the questionnaire entirely by voice, hands-free after
+ * a single "start" click. The questionnaire flow itself (branching, exact-match short-circuit,
+ * AI classification, confidence threshold) is untouched from the text-based ai-questionnaire
+ * app - this class only adds a spoken front end: each question is spoken aloud by Gemini, the
+ * user's spoken reply is captured and fed into the same SessionService.submitAnswer used by the
+ * text app, and an answer that isn't understood triggers a spoken retry prompt instead of a
+ * click-to-retry - looping until either a valid answer arrives or every field has been
+ * collected.
  */
 @Component
 @RequiredArgsConstructor
@@ -44,6 +45,12 @@ public class VoiceSessionHandler extends AbstractWebSocketHandler {
 	private static final int SEND_TIME_LIMIT_MS = 30_000;
 
 	private static final int SEND_BUFFER_SIZE_BYTES = 512 * 1024;
+
+	private static final String RETRY_NO_SPEECH_MESSAGE = "Sorry, I didn't hear anything. Please answer again.";
+
+	private static final String RETRY_TIMEOUT_MESSAGE = "Sorry, I didn't catch that. Please answer again.";
+
+	private static final String CLOSING_MESSAGE = "Thank you. That's everything I needed - the questionnaire is now complete.";
 
 	private final SessionService sessionService;
 
@@ -69,10 +76,11 @@ public class VoiceSessionHandler extends AbstractWebSocketHandler {
 			sendError(state, "Malformed control message");
 			return;
 		}
-		switch (inbound.type()) {
-			case "start" -> handleStart(state);
-			case "listen" -> handleListen(state);
-			default -> sendError(state, "Unknown control message type: " + inbound.type());
+		if ("start".equals(inbound.type())) {
+			handleStart(state);
+		}
+		else {
+			sendError(state, "Unknown control message type: " + inbound.type());
 		}
 	}
 
@@ -106,34 +114,47 @@ public class VoiceSessionHandler extends AbstractWebSocketHandler {
 			return;
 		}
 		state.questionnaireSession = sessionService.createSession();
-		speechService.openLiveTranscriptionSession().thenAccept(liveSession -> {
+		speechService.openLiveTranscriptionSession(chunk -> sendAudioChunk(state, chunk)).thenAccept(liveSession -> {
 			state.liveSession = liveSession;
-			presentCurrentQuestion(state);
+			askCurrentQuestion(state);
 		}).exceptionally(ex -> {
 			sendError(state, "Could not start voice session: " + describeError(ex));
 			return null;
 		});
 	}
 
-	private void presentCurrentQuestion(ConnectionState state) {
+	/**
+	 * Speaks the current question (or, once every field has been collected, the closing
+	 * message) and then either arms the next answer capture or ends the conversation. This is
+	 * the single loop that keeps the conversation going without the browser ever needing to
+	 * click anything again.
+	 */
+	private void askCurrentQuestion(ConnectionState state) {
 		Question current = sessionService.getCurrentQuestion(state.questionnaireSession);
 		if (current == null) {
-			sendJson(state, new VoiceMessages.Completed());
+			speak(state, CLOSING_MESSAGE, () -> sendJson(state, new VoiceMessages.Completed()));
 			return;
 		}
 		sendJson(state, new VoiceMessages.Question(QuestionDto.from(current)));
+		speak(state, current.getQuestion(), () -> beginListening(state));
 	}
 
-	private void handleListen(ConnectionState state) {
-		if (state.liveSession == null) {
-			sendError(state, "Voice session is not ready yet");
-			return;
-		}
-		state.liveSession.captureNextAnswer().whenComplete((transcript, ex) -> {
-			sendJson(state, new VoiceMessages.ListeningStopped());
+	private void speak(ConnectionState state, String text, Runnable onSpoken) {
+		sendJson(state, new VoiceMessages.Speaking());
+		state.liveSession.speak(text).whenComplete((ignored, ex) -> {
 			if (ex != null) {
-				sendJson(state,
-						new VoiceMessages.NotUnderstood("I didn't catch anything in time. Click the button and try again."));
+				sendError(state, "Could not speak the next line: " + describeError(ex));
+				return;
+			}
+			onSpoken.run();
+		});
+	}
+
+	private void beginListening(ConnectionState state) {
+		sendJson(state, new VoiceMessages.Listening());
+		state.liveSession.captureNextAnswer().whenComplete((transcript, ex) -> {
+			if (ex != null) {
+				retry(state, RETRY_TIMEOUT_MESSAGE);
 				return;
 			}
 			onAnswerTranscribed(state, transcript);
@@ -143,17 +164,17 @@ public class VoiceSessionHandler extends AbstractWebSocketHandler {
 	private void onAnswerTranscribed(ConnectionState state, String transcript) {
 		sendJson(state, new VoiceMessages.Transcript(transcript));
 		if (transcript == null || transcript.isBlank()) {
-			sendJson(state, new VoiceMessages.NotUnderstood("Sorry, I didn't hear anything. Click the button and try again."));
+			retry(state, RETRY_NO_SPEECH_MESSAGE);
 			return;
 		}
 		try {
 			Session updated = sessionService.submitAnswer(state.questionnaireSession.getSessionId(), transcript);
 			state.questionnaireSession = updated;
 			sendJson(state, new VoiceMessages.Answers(updated.isCompleted(), updated.getCollectedAnswers()));
-			presentCurrentQuestion(state);
+			askCurrentQuestion(state);
 		}
 		catch (AnswerNotUnderstoodException ex) {
-			sendJson(state, new VoiceMessages.NotUnderstood(ex.getMessage() + " Click the button and try again."));
+			retry(state, "Sorry, that doesn't answer: " + ex.getMessage() + " Please try again.");
 		}
 		catch (SessionNotFoundException | QuestionnaireCompletedException ex) {
 			sendError(state, ex.getMessage());
@@ -163,12 +184,26 @@ public class VoiceSessionHandler extends AbstractWebSocketHandler {
 		}
 	}
 
+	private void retry(ConnectionState state, String message) {
+		sendJson(state, new VoiceMessages.NotUnderstood(message));
+		speak(state, message, () -> beginListening(state));
+	}
+
 	private void sendJson(ConnectionState state, Object payload) {
 		try {
 			state.session.sendMessage(new TextMessage(objectMapper.writeValueAsString(payload)));
 		}
 		catch (IOException ex) {
 			log.warn("Failed to send voice control message", ex);
+		}
+	}
+
+	private void sendAudioChunk(ConnectionState state, byte[] chunk) {
+		try {
+			state.session.sendMessage(new BinaryMessage(chunk));
+		}
+		catch (IOException ex) {
+			log.warn("Failed to send spoken audio chunk to browser", ex);
 		}
 	}
 
