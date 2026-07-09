@@ -134,32 +134,6 @@
   .answers-list li:last-child { border-bottom: none; }
   .answers-list .field { color: var(--muted); }
   .answers-list .value { font-weight: 600; text-align: right; }
-  .log { max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-  .log-entry {
-    background: #f7f7f9;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 10px;
-    font-family: "SF Mono", Menlo, Consolas, monospace;
-    font-size: 11.5px;
-  }
-  .log-entry .log-head {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 6px;
-    font-family: -apple-system, sans-serif;
-  }
-  .log-entry .log-dir {
-    font-weight: 700;
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 10px;
-  }
-  .dir-out { background: rgba(59,111,224,0.12); color: var(--accent-hover); }
-  .dir-in { background: rgba(31,157,99,0.12); color: var(--ok); }
-  .log-entry pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text); }
-  .full-width { grid-column: 1 / -1; }
 </style>
 </head>
 <body>
@@ -189,13 +163,6 @@
       <li class="empty-state" style="display:block; border:none;">No answers yet</li>
     </ul>
   </div>
-
-  <div class="panel full-width">
-    <h2>Event log</h2>
-    <div id="log" class="log">
-      <div class="empty-state">WebSocket messages will show up here.</div>
-    </div>
-  </div>
 </div>
 
 <script>
@@ -214,6 +181,7 @@ const state = {
   pendingSamples: [],
   started: false,
   nextPlayTime: 0,
+  listenTimer: null,
 };
 
 const el = {
@@ -222,7 +190,6 @@ const el = {
   banner: document.getElementById("banner"),
   questionArea: document.getElementById("questionArea"),
   answersList: document.getElementById("answersList"),
-  log: document.getElementById("log"),
 };
 
 el.startBtn.addEventListener("click", startVoiceSession);
@@ -242,28 +209,30 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
-function logEvent(direction, payload) {
-  const empty = el.log.querySelector(".empty-state");
-  if (empty) empty.remove();
-  const dirClass = direction === "out" ? "dir-out" : "dir-in";
-  const entry = document.createElement("div");
-  entry.className = "log-entry";
-  entry.innerHTML = `
-    <div class="log-head"><span class="log-dir ${dirClass}">${direction === "out" ? "CLIENT →" : "← SERVER"}</span></div>
-    <pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre>
-  `;
-  el.log.prepend(entry);
-}
-
 async function startVoiceSession() {
   if (state.started) return;
   state.started = true;
   el.startBtn.disabled = true;
   showBanner();
 
+  // Reset all transient state so a second conversation starts exactly like the first one.
+  state.finished = false;
+  state.listening = false;
+  state.pendingSamples = [];
+  state.nextPlayTime = 0;
+  clearTimeout(state.listenTimer);
+  el.answersList.innerHTML = `<li class="empty-state" style="display:block; border:none;">No answers yet</li>`;
+  el.questionArea.innerHTML = `<div class="empty-state">Connecting…</div>`;
+
   try {
-    state.audioContext = new AudioContext();
-    await state.audioContext.audioWorklet.addModule("/mic-processor.js");
+    // The AudioContext (and its registered mic-processor worklet) is created once and reused
+    // across conversations - browsers cap how many contexts can exist at once, and re-adding
+    // the same worklet module to a fresh context on every restart would eventually hit that
+    // limit for no benefit.
+    if (!state.audioContext) {
+      state.audioContext = new AudioContext();
+      await state.audioContext.audioWorklet.addModule("/mic-processor.js");
+    }
     state.micStream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
     });
@@ -289,7 +258,6 @@ async function startVoiceSession() {
   state.ws.addEventListener("open", () => {
     sendControl({ type: "start" });
     setBadge("processing", "Starting…");
-    el.questionArea.innerHTML = `<div class="empty-state">Connecting…</div>`;
   });
 
   state.ws.addEventListener("message", (event) => {
@@ -300,10 +268,19 @@ async function startVoiceSession() {
     handleControlMessage(JSON.parse(event.data));
   });
 
+  // The single teardown path for this connection, whether it closes because the
+  // conversation finished normally (via finishConversation), the server errored out, or the
+  // socket just dropped. Re-enabling the Start button here (rather than in
+  // finishConversation) is what allows a brand new conversation to be started afterwards.
   state.ws.addEventListener("close", () => {
-    setBadge("idle", "Disconnected");
-    showBanner("warn", "Voice connection closed.");
+    clearTimeout(state.listenTimer);
     teardownMic();
+    el.startBtn.disabled = false;
+    state.started = false;
+    if (!state.finished) {
+      setBadge("idle", "Disconnected");
+      showBanner("warn", "Voice connection closed.");
+    }
   });
 
   state.ws.addEventListener("error", () => {
@@ -312,27 +289,44 @@ async function startVoiceSession() {
 }
 
 function sendControl(payload) {
-  logEvent("out", payload);
   state.ws.send(JSON.stringify(payload));
 }
 
-function handleControlMessage(msg) {
-  logEvent("in", msg);
+// Ends the current conversation's connection; the "close" listener above does the actual
+// teardown (mic, button state) so there is exactly one path for it regardless of why the
+// socket closed.
+function finishConversation() {
+  setListening(false);
+  clearTimeout(state.listenTimer);
+  if (state.ws) {
+    state.ws.close();
+  }
+}
 
+function handleControlMessage(msg) {
   switch (msg.type) {
     case "question":
       renderQuestion(msg.question);
       break;
     case "speaking":
+      // nextPlayTime is intentionally left as-is: playAudioChunk already floors every chunk's
+      // start time at audioContext.currentTime, so a stale (past) value self-corrects on the
+      // next chunk. Forcibly resetting it here would rewind the schedule if this line follows
+      // another one back-to-back with no listening gap in between (e.g. an apology immediately
+      // followed by the re-asked question during a retry), cutting off the first line's tail
+      // and overlapping it with the second.
+      clearTimeout(state.listenTimer);
       setListening(false);
-      state.nextPlayTime = state.audioContext.currentTime;
       setBadge("speaking", "Speaking…");
       break;
     case "listening":
-      setListening(true);
-      setBadge("listening", "Listening…");
+      scheduleListening();
       break;
     case "transcript":
+      // The answer is captured; close the mic while the server classifies it so we don't
+      // keep streaming audio into a session with no capture armed.
+      setListening(false);
+      setBadge("processing", "Processing…");
       showBanner("ok", `Heard: "${msg.text}"`);
       break;
     case "answers":
@@ -343,13 +337,13 @@ function handleControlMessage(msg) {
       break;
     case "completed":
       state.finished = true;
-      setListening(false);
+      finishConversation();
       setBadge("done", "Completed");
       el.questionArea.innerHTML = `<div class="banner banner-ok" style="margin-top:12px;">Questionnaire completed. All answers are shown in the panel on the right.</div>`;
       break;
     case "error":
       state.finished = true;
-      setListening(false);
+      finishConversation();
       showBanner("error", msg.message);
       break;
   }
@@ -367,6 +361,22 @@ function renderQuestion(question) {
       <div class="mic-hint" id="micHint">Listen, then just speak your answer</div>
     </div>
   `;
+}
+
+// The server tells us to listen as soon as Gemini has finished *generating* the question
+// audio, but the browser still has that audio queued for playback (nextPlayTime is in the
+// future). Opening the mic now would capture the tail of the spoken question echoing out of
+// the speakers as if it were the user's answer. So defer enabling the mic until the queued
+// audio has actually finished playing.
+function scheduleListening() {
+  const remainingMs = Math.max(0, (state.nextPlayTime - state.audioContext.currentTime) * 1000);
+  clearTimeout(state.listenTimer);
+  setBadge("processing", "…");
+  state.listenTimer = setTimeout(() => {
+    if (state.finished) return;
+    setListening(true);
+    setBadge("listening", "Listening…");
+  }, remainingMs);
 }
 
 function setListening(listening) {

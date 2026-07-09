@@ -1,6 +1,10 @@
 package com.example.voice_assistant.voice;
 
 import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import jakarta.annotation.PreDestroy;
 
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.BinaryMessage;
@@ -46,9 +50,11 @@ public class VoiceSessionHandler extends AbstractWebSocketHandler {
 
 	private static final int SEND_BUFFER_SIZE_BYTES = 512 * 1024;
 
-	private static final String RETRY_NO_SPEECH_MESSAGE = "Sorry, I didn't hear anything. Please answer again.";
+	private static final String RETRY_NO_SPEECH_MESSAGE = "Sorry, I didn't hear anything.";
 
-	private static final String RETRY_TIMEOUT_MESSAGE = "Sorry, I didn't catch that. Please answer again.";
+	private static final String RETRY_TIMEOUT_MESSAGE = "Sorry, I didn't catch that.";
+
+	private static final String RETRY_NOT_UNDERSTOOD_MESSAGE = "Sorry, I didn't get your answer.";
 
 	private static final String CLOSING_MESSAGE = "Thank you. That's everything I needed - the questionnaire is now complete.";
 
@@ -57,6 +63,24 @@ public class VoiceSessionHandler extends AbstractWebSocketHandler {
 	private final GeminiSpeechService speechService;
 
 	private final ObjectMapper objectMapper;
+
+	/**
+	 * Answer classification is a blocking LLM HTTP call, and a captured answer resolves on the
+	 * Gemini Live session's websocket read thread. Running the classification there would stall
+	 * that connection's inbound message processing for the duration of the call, so the answer
+	 * handling is offloaded here. Cached + daemon: threads are I/O-bound (mostly waiting on the
+	 * LLM) and must never keep the JVM alive on shutdown.
+	 */
+	private final ExecutorService answerProcessingExecutor = Executors.newCachedThreadPool(r -> {
+		Thread thread = new Thread(r, "voice-answer-processing");
+		thread.setDaemon(true);
+		return thread;
+	});
+
+	@PreDestroy
+	void shutdown() {
+		answerProcessingExecutor.shutdownNow();
+	}
 
 	@Override
 	public void afterConnectionEstablished(WebSocketSession wsSession) {
@@ -152,13 +176,15 @@ public class VoiceSessionHandler extends AbstractWebSocketHandler {
 
 	private void beginListening(ConnectionState state) {
 		sendJson(state, new VoiceMessages.Listening());
-		state.liveSession.captureNextAnswer().whenComplete((transcript, ex) -> {
+		// whenCompleteAsync: onAnswerTranscribed runs a blocking LLM classification, and the
+		// capture future resolves on the Gemini Live read thread - keep that work off it.
+		state.liveSession.captureNextAnswer().whenCompleteAsync((transcript, ex) -> {
 			if (ex != null) {
 				retry(state, RETRY_TIMEOUT_MESSAGE);
 				return;
 			}
 			onAnswerTranscribed(state, transcript);
-		});
+		}, answerProcessingExecutor);
 	}
 
 	private void onAnswerTranscribed(ConnectionState state, String transcript) {
@@ -174,7 +200,7 @@ public class VoiceSessionHandler extends AbstractWebSocketHandler {
 			askCurrentQuestion(state);
 		}
 		catch (AnswerNotUnderstoodException ex) {
-			retry(state, "Sorry, that doesn't answer: " + ex.getMessage() + " Please try again.");
+			retry(state, RETRY_NOT_UNDERSTOOD_MESSAGE);
 		}
 		catch (SessionNotFoundException | QuestionnaireCompletedException ex) {
 			sendError(state, ex.getMessage());
@@ -184,9 +210,15 @@ public class VoiceSessionHandler extends AbstractWebSocketHandler {
 		}
 	}
 
-	private void retry(ConnectionState state, String message) {
-		sendJson(state, new VoiceMessages.NotUnderstood(message));
-		speak(state, message, () -> beginListening(state));
+	/**
+	 * Speaks a short apology and then re-asks the current question verbatim before listening
+	 * again, e.g. "Sorry, I didn't get your answer." followed by "Where are you from?" - never
+	 * a single line combining the two, and never a rephrasing of the question.
+	 */
+	private void retry(ConnectionState state, String apology) {
+		sendJson(state, new VoiceMessages.NotUnderstood(apology));
+		Question current = sessionService.getCurrentQuestion(state.questionnaireSession);
+		speak(state, apology, () -> speak(state, current.getQuestion(), () -> beginListening(state)));
 	}
 
 	private void sendJson(ConnectionState state, Object payload) {
