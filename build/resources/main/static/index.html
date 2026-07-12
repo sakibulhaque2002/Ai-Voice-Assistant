@@ -149,6 +149,7 @@
       <button id="startBtn" class="btn-primary">Start conversation</button>
       <span id="statusBadge" class="badge badge-idle">Idle</span>
     </div>
+    <div id="sessionIdRow" class="mic-hint" style="text-align:left; margin-bottom:10px;"></div>
 
     <div id="banner"></div>
 
@@ -190,6 +191,7 @@ const el = {
   banner: document.getElementById("banner"),
   questionArea: document.getElementById("questionArea"),
   answersList: document.getElementById("answersList"),
+  sessionIdRow: document.getElementById("sessionIdRow"),
 };
 
 el.startBtn.addEventListener("click", startVoiceSession);
@@ -223,6 +225,7 @@ async function startVoiceSession() {
   clearTimeout(state.listenTimer);
   el.answersList.innerHTML = `<li class="empty-state" style="display:block; border:none;">No answers yet</li>`;
   el.questionArea.innerHTML = `<div class="empty-state">Connecting…</div>`;
+  el.sessionIdRow.textContent = "";
 
   try {
     // The AudioContext (and its registered mic-processor worklet) is created once and reused
@@ -305,6 +308,12 @@ function finishConversation() {
 
 function handleControlMessage(msg) {
   switch (msg.type) {
+    case "started":
+      // Emitted once per session right after it's created. GET /session/{sessionId} returns
+      // this session's collected answers as JSON, both during and after the conversation.
+      el.sessionIdRow.innerHTML = `Session id: <code>${escapeHtml(msg.sessionId)}</code> &middot; ` +
+        `<a href="/session/${encodeURIComponent(msg.sessionId)}" target="_blank" rel="noopener">view JSON</a>`;
+      break;
     case "question":
       renderQuestion(msg.question);
       break;

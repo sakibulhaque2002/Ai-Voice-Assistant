@@ -78,11 +78,4 @@ public class SessionService {
 		return questionService.getQuestionById(session.getCurrentQuestionId());
 	}
 
-	/**
-	 * Drops a session from memory, e.g. once its voice WebSocket connection closes.
-	 */
-	public void endSession(String sessionId) {
-		sessions.remove(sessionId);
-	}
-
 }

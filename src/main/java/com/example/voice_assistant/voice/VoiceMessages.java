@@ -22,6 +22,17 @@ final class VoiceMessages {
 	record Inbound(String type) {
 	}
 
+	/**
+	 * Sent once, right after a session is created, so the browser can later fetch the
+	 * collected answers via GET /session/{sessionId} - the id is never generated
+	 * client-side.
+	 */
+	record Started(String type, String sessionId) {
+		Started(String sessionId) {
+			this("started", sessionId);
+		}
+	}
+
 	record Question(String type, QuestionDto question) {
 		Question(QuestionDto question) {
 			this("question", question);

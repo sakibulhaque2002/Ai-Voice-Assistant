@@ -128,9 +128,9 @@ public class VoiceSessionHandler extends AbstractWebSocketHandler {
 		if (state.liveSession != null) {
 			state.liveSession.close();
 		}
-		if (state.questionnaireSession != null) {
-			sessionService.endSession(state.questionnaireSession.getSessionId());
-		}
+		// The questionnaire session is intentionally left in SessionService after disconnect
+		// (rather than removed) so its collected answers stay readable via
+		// GET /session/{sessionId} once the conversation has ended.
 	}
 
 	private void handleStart(ConnectionState state) {
@@ -138,6 +138,7 @@ public class VoiceSessionHandler extends AbstractWebSocketHandler {
 			return;
 		}
 		state.questionnaireSession = sessionService.createSession();
+		sendJson(state, new VoiceMessages.Started(state.questionnaireSession.getSessionId()));
 		speechService.openLiveTranscriptionSession(chunk -> sendAudioChunk(state, chunk)).thenAccept(liveSession -> {
 			state.liveSession = liveSession;
 			askCurrentQuestion(state);
