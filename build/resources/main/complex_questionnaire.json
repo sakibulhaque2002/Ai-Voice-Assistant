@@ -1,0 +1,265 @@
+{
+  "questionnaireId": "life-profile-001",
+  "title": "Life Profile Assessment",
+  "startQuestionId": 1,
+  "questions": [
+    {
+      "id": 1,
+      "question": "Which country do you currently live in?",
+      "field": "country",
+      "type": "single_select",
+      "options": [
+        { "label": "Bangladesh", "value": "Bangladesh", "nextQuestionId": 2 },
+        { "label": "India", "value": "India", "nextQuestionId": 2 },
+        { "label": "Other", "value": "Other", "nextQuestionId": 2 }
+      ]
+    },
+    {
+      "id": 2,
+      "question": "What is your age group?",
+      "field": "ageGroup",
+      "type": "single_select",
+      "options": [
+        { "label": "18-25", "value": "18-25", "nextQuestionId": 3 },
+        { "label": "26-40", "value": "26-40", "nextQuestionId": 3 },
+        { "label": "41+", "value": "41+", "nextQuestionId": 3 }
+      ]
+    },
+    {
+      "id": 3,
+      "question": "Are you currently employed?",
+      "field": "employed",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 4 },
+        { "label": "No", "value": false, "nextQuestionId": 7 }
+      ]
+    },
+    {
+      "id": 4,
+      "question": "What type of employment do you have?",
+      "field": "employmentType",
+      "type": "single_select",
+      "options": [
+        { "label": "Full-time", "value": "Full-time", "nextQuestionId": 5 },
+        { "label": "Part-time", "value": "Part-time", "nextQuestionId": 5 },
+        { "label": "Self-employed", "value": "Self-employed", "nextQuestionId": 5 }
+      ]
+    },
+    {
+      "id": 5,
+      "question": "Do you work remotely?",
+      "field": "remote",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 6 },
+        { "label": "No", "value": false, "nextQuestionId": 6 }
+      ]
+    },
+    {
+      "id": 6,
+      "question": "What is your monthly income?",
+      "field": "income",
+      "type": "single_select",
+      "options": [
+        { "label": "Below $500", "value": "<500", "nextQuestionId": 9 },
+        { "label": "$500-$2000", "value": "500-2000", "nextQuestionId": 9 },
+        { "label": "Above $2000", "value": ">2000", "nextQuestionId": 9 }
+      ]
+    },
+    {
+      "id": 7,
+      "question": "Are you currently a student?",
+      "field": "student",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 8 },
+        { "label": "No", "value": false, "nextQuestionId": 9 }
+      ]
+    },
+    {
+      "id": 8,
+      "question": "What is your highest level of education?",
+      "field": "education",
+      "type": "single_select",
+      "options": [
+        { "label": "High School", "value": "High School", "nextQuestionId": 9 },
+        { "label": "Bachelor's", "value": "Bachelor", "nextQuestionId": 9 },
+        { "label": "Master's or Higher", "value": "Masters", "nextQuestionId": 9 }
+      ]
+    },
+    {
+      "id": 9,
+      "question": "Are you married?",
+      "field": "married",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 10 },
+        { "label": "No", "value": false, "nextQuestionId": 12 }
+      ]
+    },
+    {
+      "id": 10,
+      "question": "Do you have children?",
+      "field": "children",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 11 },
+        { "label": "No", "value": false, "nextQuestionId": 13 }
+      ]
+    },
+    {
+      "id": 11,
+      "question": "How many children do you have?",
+      "field": "childrenCount",
+      "type": "single_select",
+      "options": [
+        { "label": "1", "value": 1, "nextQuestionId": 13 },
+        { "label": "2", "value": 2, "nextQuestionId": 13 },
+        { "label": "3 or more", "value": 3, "nextQuestionId": 13 }
+      ]
+    },
+    {
+      "id": 12,
+      "question": "Do you plan to get married within the next 5 years?",
+      "field": "marriagePlan",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 13 },
+        { "label": "No", "value": false, "nextQuestionId": 13 }
+      ]
+    },
+    {
+      "id": 13,
+      "question": "Do you own a house?",
+      "field": "houseOwner",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 14 },
+        { "label": "No", "value": false, "nextQuestionId": 15 }
+      ]
+    },
+    {
+      "id": 14,
+      "question": "Is your house fully paid off?",
+      "field": "mortgageFree",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 16 },
+        { "label": "No", "value": false, "nextQuestionId": 16 }
+      ]
+    },
+    {
+      "id": 15,
+      "question": "Are you planning to buy a house within 3 years?",
+      "field": "buyHouse",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 16 },
+        { "label": "No", "value": false, "nextQuestionId": 16 }
+      ]
+    },
+    {
+      "id": 16,
+      "question": "Do you own a car?",
+      "field": "ownsCar",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 17 },
+        { "label": "No", "value": false, "nextQuestionId": 19 }
+      ]
+    },
+    {
+      "id": 17,
+      "question": "How old is your car?",
+      "field": "carAge",
+      "type": "single_select",
+      "options": [
+        { "label": "Less than 5 years", "value": "<5", "nextQuestionId": 18 },
+        { "label": "5-10 years", "value": "5-10", "nextQuestionId": 18 },
+        { "label": "More than 10 years", "value": ">10", "nextQuestionId": 18 }
+      ]
+    },
+    {
+      "id": 18,
+      "question": "Is your car insured?",
+      "field": "carInsurance",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 20 },
+        { "label": "No", "value": false, "nextQuestionId": 20 }
+      ]
+    },
+    {
+      "id": 19,
+      "question": "Are you planning to buy a car?",
+      "field": "buyCar",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 20 },
+        { "label": "No", "value": false, "nextQuestionId": 20 }
+      ]
+    },
+    {
+      "id": 20,
+      "question": "Do you currently have any outstanding loans?",
+      "field": "loan",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 21 },
+        { "label": "No", "value": false, "nextQuestionId": 23 }
+      ]
+    },
+    {
+      "id": 21,
+      "question": "What type of loan do you have?",
+      "field": "loanType",
+      "type": "single_select",
+      "options": [
+        { "label": "Home Loan", "value": "Home", "nextQuestionId": 22 },
+        { "label": "Car Loan", "value": "Car", "nextQuestionId": 22 },
+        { "label": "Personal Loan", "value": "Personal", "nextQuestionId": 22 }
+      ]
+    },
+    {
+      "id": 22,
+      "question": "Are you making payments on time?",
+      "field": "loanPayments",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 23 },
+        { "label": "No", "value": false, "nextQuestionId": 23 }
+      ]
+    },
+    {
+      "id": 23,
+      "question": "Do you have health insurance?",
+      "field": "healthInsurance",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 24 },
+        { "label": "No", "value": false, "nextQuestionId": 24 }
+      ]
+    },
+    {
+      "id": 24,
+      "question": "Do you save money every month?",
+      "field": "monthlySavings",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": 25 },
+        { "label": "No", "value": false, "nextQuestionId": 25 }
+      ]
+    },
+    {
+      "id": 25,
+      "question": "Would you like to receive financial planning tips?",
+      "field": "financialTips",
+      "type": "single_select",
+      "options": [
+        { "label": "Yes", "value": true, "nextQuestionId": null },
+        { "label": "No", "value": false, "nextQuestionId": null }
+      ]
+    }
+  ]
+}
