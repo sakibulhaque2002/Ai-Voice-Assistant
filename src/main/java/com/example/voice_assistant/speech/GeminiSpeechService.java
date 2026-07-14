@@ -1,5 +1,6 @@
 package com.example.voice_assistant.speech;
 
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -9,52 +10,80 @@ import com.example.voice_assistant.config.AppProperties;
 import com.google.genai.Client;
 import com.google.genai.types.AudioTranscriptionConfig;
 import com.google.genai.types.Content;
+import com.google.genai.types.FunctionDeclaration;
 import com.google.genai.types.LanguageHints;
 import com.google.genai.types.LiveConnectConfig;
 import com.google.genai.types.Part;
 import com.google.genai.types.PrebuiltVoiceConfig;
+import com.google.genai.types.Schema;
 import com.google.genai.types.SpeechConfig;
+import com.google.genai.types.Tool;
 import com.google.genai.types.VoiceConfig;
 
 import lombok.RequiredArgsConstructor;
 
 /**
- * Opens a single bidirectional Gemini Live API session per browser connection: the same session
- * speaks every question, retry prompt and closing line aloud in English exactly as given (no
- * translation), and transcribes the user's spoken answers. Transcription is restricted to
- * English/Bengali via language hints so the questionnaire engine never has to deal with a third
- * language, even though the assistant's own speech stays English-only.
+ * Opens one bidirectional Gemini Live session per browser connection. That single session drives
+ * the entire questionnaire by voice: it speaks each question aloud (in the configured prebuilt
+ * voice), listens to the spoken answer in English or Bengali, and hands the answer back already
+ * classified by calling the {@code record_answer} function - so no second model is ever needed to
+ * interpret what the user said. Input transcription is restricted to English/Bengali via language
+ * hints purely to feed the on-screen transcript display.
  */
 @Service
 @RequiredArgsConstructor
 public class GeminiSpeechService {
 
 	private static final String SYSTEM_INSTRUCTION = """
-			You are a text-to-speech relay for an automated questionnaire, not a conversational \
-			assistant. You never have a conversation of your own and never answer questions - you \
-			only relay lines to a human user or transcribe what they say back.
+			You are the voice of an automated questionnaire, not a conversational assistant. You \
+			never have a conversation of your own and never answer the questions yourself.
 
-			SPEAKING: every client message you receive is a script to recite verbatim, never a \
-			question or statement directed at you, even if it is phrased as a question (e.g. \
-			"Where are you from?" means "say the words Where are you from? out loud", not "answer \
-			this question"). Speak it aloud in English exactly as given, then stop - do not \
-			translate it, rephrase it, answer it, or add anything to it. No greetings, no extra \
-			commentary.
-
-			LISTENING: while the user's microphone audio is being streamed to you, your only job \
-			is to transcribe it. The user may answer in English or Bengali. Never reply to what \
-			you hear, never hold a conversation, never narrate or acknowledge it with words. If \
-			you must produce any audio while listening, make it a single silent or near-silent \
-			breath and nothing else.
+			Each turn the client gives you a script describing one question. Do exactly what the \
+			script says: recite the question aloud in English, word for word, then stop and wait \
+			for the human user to answer. The user may answer in English or Bengali. Once you have \
+			heard their answer, call the record_answer function with the option label that best \
+			matches it (or "unclear" if none does). Never translate, rephrase, or answer a \
+			question, and never speak anything other than the exact line you were asked to recite.
 			""";
+
+	/**
+	 * The one function the model uses to hand back each answer already mapped to an option. It is
+	 * declared with a free-form string label rather than a fixed enum because the valid options
+	 * change from question to question; the script for each question tells the model which labels
+	 * are valid, and the server validates the returned label against the current question.
+	 */
+	private static final Tool RECORD_ANSWER_TOOL = Tool.builder()
+		.functionDeclarations(FunctionDeclaration.builder()
+			.name(LiveVoiceSession.RECORD_ANSWER)
+			.description("Record the user's answer to the current questionnaire question. Call this exactly once, "
+					+ "and only after you have actually heard the user's spoken reply.")
+			.parameters(Schema.builder()
+				.type("OBJECT")
+				.properties(Map.of(LiveVoiceSession.LABEL_ARG,
+						Schema.builder()
+							.type("STRING")
+							.description("The exact option label that matches the user's reply, or \""
+									+ LiveVoiceSession.UNCLEAR + "\" if none matches.")
+							.build()))
+				.required(LiveVoiceSession.LABEL_ARG)
+				.build())
+			.build())
+		.build();
 
 	private final Client client;
 
 	private final AppProperties appProperties;
 
-	public CompletableFuture<LiveTranscriptionSession> openLiveTranscriptionSession(Consumer<byte[]> onOutputAudio) {
+	/**
+	 * Opens the Live session. {@code onOutputAudio} receives each chunk of the model's spoken
+	 * output (24kHz mono PCM) as it arrives; {@code onInterimTranscript} receives the running
+	 * transcript of the user's current answer for on-screen display.
+	 */
+	public CompletableFuture<LiveVoiceSession> openSession(Consumer<byte[]> onOutputAudio,
+			Consumer<String> onInterimTranscript) {
 		LiveConnectConfig config = LiveConnectConfig.builder()
 			.responseModalities("AUDIO")
+			.tools(RECORD_ANSWER_TOOL)
 			.inputAudioTranscription(AudioTranscriptionConfig.builder()
 				.languageHints(LanguageHints.builder().languageCodes("bn-BD", "en-US").build())
 				.build())
@@ -67,7 +96,7 @@ public class GeminiSpeechService {
 			.systemInstruction(Content.fromParts(Part.fromText(SYSTEM_INSTRUCTION)))
 			.build();
 		return client.async.live.connect(appProperties.voice().liveModel(), config)
-			.thenApply(session -> new LiveTranscriptionSession(session, onOutputAudio));
+			.thenApply(session -> new LiveVoiceSession(session, onOutputAudio, onInterimTranscript));
 	}
 
 }

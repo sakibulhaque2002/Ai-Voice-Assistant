@@ -17,16 +17,13 @@ repositories {
 	mavenCentral()
 }
 
-ext {
-	set('springAiVersion', "2.0.0")
-}
-
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
-	implementation 'org.springframework.ai:spring-ai-starter-model-google-genai'
-	implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+	// Raw Google GenAI client: the whole app talks to a single Gemini Live session that
+	// speaks each question, listens to the spoken answer and returns the matched option as
+	// a function call. No second LLM classifies anything, so no Spring AI starter is needed.
 	implementation 'com.google.genai:google-genai:1.60.0'
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
@@ -36,12 +33,6 @@ dependencies {
 	testCompileOnly 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testAnnotationProcessor 'org.projectlombok:lombok'
-}
-
-dependencyManagement {
-	imports {
-		mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
-	}
 }
 
 tasks.named('test') {

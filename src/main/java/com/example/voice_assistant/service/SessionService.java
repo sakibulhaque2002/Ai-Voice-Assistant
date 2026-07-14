@@ -7,6 +7,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Service;
 
+import com.example.voice_assistant.exception.AnswerNotUnderstoodException;
+import com.example.voice_assistant.exception.QuestionnaireCompletedException;
+import com.example.voice_assistant.exception.SessionNotFoundException;
 import com.example.voice_assistant.model.Option;
 import com.example.voice_assistant.model.Question;
 import com.example.voice_assistant.model.Session;
@@ -14,10 +17,12 @@ import com.example.voice_assistant.model.Session;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Owns questionnaire session state and the user-answer flow: validate/classify the
- * answer, store it under the question's field name, then move to whichever question
- * nextQuestionId points to (or finish if it's null). Sessions live only in memory, as
- * required for this proof of concept - no database.
+ * Owns questionnaire session state and the answer flow. The Gemini Live model has already
+ * mapped the spoken answer to one of the current question's option labels (via the
+ * record_answer function call), so this service just resolves that label to its option,
+ * stores the option's value under the question's field name, and moves to whichever
+ * question nextQuestionId points to (or finishes if it's null). Sessions live only in
+ * memory, as required for this proof of concept - no database.
  */
 @Service
 @RequiredArgsConstructor
@@ -26,8 +31,6 @@ public class SessionService {
 	private final Map<String, Session> sessions = new ConcurrentHashMap<>();
 
 	private final QuestionService questionService;
-
-	private final AIService aiService;
 
 	public Session createSession() {
 		Question startQuestion = questionService.getStartQuestion();
@@ -45,14 +48,21 @@ public class SessionService {
 		return session;
 	}
 
-	public Session submitAnswer(String sessionId, String rawAnswer) {
+	/**
+	 * Records the answer the Live model chose for the current question. {@code optionLabel} is
+	 * the label it returned via the record_answer function call; it must match one of the
+	 * current question's options exactly (case-insensitively) or an
+	 * {@link AnswerNotUnderstoodException} is thrown so the caller can re-ask.
+	 */
+	public Session submitAnswer(String sessionId, String optionLabel) {
 		Session session = getSession(sessionId);
 		if (session.isCompleted()) {
 			throw new QuestionnaireCompletedException(sessionId);
 		}
 
 		Question currentQuestion = questionService.getQuestionById(session.getCurrentQuestionId());
-		Option chosenOption = aiService.resolveAnswer(currentQuestion, session.getCollectedAnswers(), rawAnswer);
+		Option chosenOption = questionService.findOptionByLabel(currentQuestion, optionLabel)
+			.orElseThrow(() -> new AnswerNotUnderstoodException(currentQuestion.getQuestion()));
 
 		session.getCollectedAnswers().put(currentQuestion.getField(), chosenOption.getValue());
 

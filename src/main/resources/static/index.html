@@ -134,13 +134,22 @@
   .answers-list li:last-child { border-bottom: none; }
   .answers-list .field { color: var(--muted); }
   .answers-list .value { font-weight: 600; text-align: right; }
+  .result-json {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-x: auto;
+    margin: 12px 0 0;
+  }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="header">
-    <h1>Voice Assistant — Interactive Tester</h1>
-    <p class="subtitle">Same questionnaire engine as ai-questionnaire, but the whole thing is a spoken conversation: click once to start, then just talk. Gemini speaks each question aloud and transcribes your reply over the /voice WebSocket; an answer it doesn't understand gets a spoken retry instead of a warning.</p>
+    <h1>Voice Assistant</h1>
   </div>
 
   <div class="panel">
@@ -183,6 +192,7 @@ const state = {
   started: false,
   nextPlayTime: 0,
   listenTimer: null,
+  answers: {},
 };
 
 const el = {
@@ -309,10 +319,10 @@ function finishConversation() {
 function handleControlMessage(msg) {
   switch (msg.type) {
     case "started":
-      // Emitted once per session right after it's created. GET /session/{sessionId} returns
-      // this session's collected answers as JSON, both during and after the conversation.
-      el.sessionIdRow.innerHTML = `Session id: <code>${escapeHtml(msg.sessionId)}</code> &middot; ` +
-        `<a href="/session/${encodeURIComponent(msg.sessionId)}" target="_blank" rel="noopener">view JSON</a>`;
+      // Emitted once per session right after it's created. The collected answers stream back
+      // live over this same socket (the "answers" message) and the final JSON is shown on
+      // completion, so no separate endpoint is needed.
+      el.sessionIdRow.innerHTML = `Session id: <code>${escapeHtml(msg.sessionId)}</code>`;
       break;
     case "question":
       renderQuestion(msg.question);
@@ -332,23 +342,28 @@ function handleControlMessage(msg) {
       scheduleListening();
       break;
     case "transcript":
-      // The answer is captured; close the mic while the server classifies it so we don't
-      // keep streaming audio into a session with no capture armed.
-      setListening(false);
-      setBadge("processing", "Processing…");
-      showBanner("ok", `Heard: "${msg.text}"`);
+      // A live, running transcript of the current answer, updated as the user speaks. The mic
+      // stays open - it's closed by the next "speaking"/"answers" message once the answer has
+      // actually been captured (as a record_answer call), not by this display update.
+      if (msg.text) showBanner("ok", `Heard: "${msg.text}"`);
       break;
     case "answers":
-      renderAnswers(msg.answers);
+      // The answer was captured and recorded; close the mic and show it.
+      setListening(false);
+      setBadge("processing", "Processing…");
+      state.answers = msg.answers || {};
+      renderAnswers(state.answers);
       break;
     case "not_understood":
+      setListening(false);
       showBanner("warn", msg.message);
       break;
     case "completed":
       state.finished = true;
       finishConversation();
       setBadge("done", "Completed");
-      el.questionArea.innerHTML = `<div class="banner banner-ok" style="margin-top:12px;">Questionnaire completed. All answers are shown in the panel on the right.</div>`;
+      el.questionArea.innerHTML = `<div class="banner banner-ok" style="margin-top:12px;">Questionnaire completed. Final responses:</div>` +
+        `<pre class="result-json">${escapeHtml(JSON.stringify(state.answers || {}, null, 2))}</pre>`;
       break;
     case "error":
       state.finished = true;
